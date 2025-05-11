@@ -1,8 +1,3 @@
-/**
- * AULA IoT - Embarcatech - Ricardo Prates - MODIFICADO COM FREERTOS
- * Webserver Raspberry Pi Pico W - WLAN com FreeRTOS, simulação de sensores e alertas.
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -23,16 +18,14 @@
 #include "semphr.h" // Para semáforos
 
 // Credenciais WIFI - Tome cuidado se publicar no github!
-#define WIFI_SSID " "
-#define WIFI_PASSWORD " "
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 // Definição dos pinos
 #define ONBOARD_LED_PIN CYW43_WL_GPIO_LED_PIN // LED onboard da Pico W
 #define LED_GREEN_PIN 11  // GPIO11 - LED verde (usado para laranja com PWM)
-#define LED_BLUE_PIN 12   // GPIO12 - LED azul (não usado ativamente nos alertas atuais)
 #define LED_RED_PIN 13    // GPIO13 - LED vermelho (usado para laranja e vermelho com PWM)
 #define BUTTON_A_PIN 5    // GPIO5 - Botão A para simulação
-#define BUZZER_PIN 15     // GPIO15 - Pino do Buzzer
 
 // Constantes para simulação e alertas
 #define TEMPERATURA_NORMAL 25.0f
@@ -84,7 +77,7 @@ void init_gpios_pwm(void) {
     gpio_pull_up(BUTTON_A_PIN); // Usar pull-up interno, botão conecta ao GND
 
     // LEDs para PWM
-    uint led_pins[] = {LED_RED_PIN, LED_GREEN_PIN, LED_BLUE_PIN};
+    uint led_pins[] = {LED_RED_PIN, LED_GREEN_PIN};
     for (int i = 0; i < sizeof(led_pins) / sizeof(led_pins[0]); ++i) {
         uint gpio = led_pins[i];
         gpio_set_function(gpio, GPIO_FUNC_PWM);
@@ -179,23 +172,20 @@ void led_alert_task(void *pvParameters) {
         temp_alerta = (temp > TEMPERATURA_SIRS);
         bpm_alerta = (hr > BPM_SIRS);
 
-        if (temp_alerta && bpm_alerta) { // Ambos altos = Vermelho + Buzzer
+        if (temp_alerta && bpm_alerta) { // Ambos altos = Vermelho 
             pwm_set_gpio_level(LED_RED_PIN, PWM_WRAP_VALUE); // Vermelho máximo
             pwm_set_gpio_level(LED_GREEN_PIN, 0);            // Verde desligado
-            pwm_set_gpio_level(LED_BLUE_PIN, 0);           // Azul desligado
             cyw43_arch_gpio_put(ONBOARD_LED_PIN, 1); // LED onboard piscando ou aceso para alerta
         } else if (temp_alerta || bpm_alerta) { // Um dos dois alto = Laranja
             pwm_set_gpio_level(LED_RED_PIN, PWM_WRAP_VALUE); // Vermelho máximo
             pwm_set_gpio_level(LED_GREEN_PIN, PWM_WRAP_VALUE / 2); // Verde médio (para fazer laranja)
-            pwm_set_gpio_level(LED_BLUE_PIN, 0);           // Azul desligado
             cyw43_arch_gpio_put(ONBOARD_LED_PIN, 1);
         } else { // Normal
             pwm_set_gpio_level(LED_RED_PIN, 0);              // Vermelho desligado
             pwm_set_gpio_level(LED_GREEN_PIN, 0); // Verde desligado (ou pode ser um verde fixo se quiser)
-            pwm_set_gpio_level(LED_BLUE_PIN, 0);           // Azul desligado
             cyw43_arch_gpio_put(ONBOARD_LED_PIN, 0); // LED onboard apagado ou em estado normal
         }
-        vTaskDelay(pdMS_TO_TICKS(200)); // Atualiza o estado dos LEDs/Buzzer
+        vTaskDelay(pdMS_TO_TICKS(200)); // Atualiza o estado dos LEDs
     }
 }
 
@@ -306,6 +296,8 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
         strncat(html_buffer, status_html, sizeof(html_buffer) - strlen(html_buffer) - 1);
         strncat(html_buffer, "</div></body></html>", sizeof(html_buffer) - strlen(html_buffer) - 1);
         
+        printf("HTML enviado:\n%s\n", html_buffer); // Depuração do tamanho do buffer
+
         // Envia a resposta
         err_t write_err = tcp_write(tpcb, html_buffer, strlen(html_buffer), TCP_WRITE_FLAG_COPY);
         if (write_err != ERR_OK) {
