@@ -27,6 +27,8 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
+set(FREERTOS_KERNEL_PATH "C:/FreeRTOS-Kernel")
+include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_import.cmake)
 
 project(led_control_webserver C CXX ASM)
 
@@ -50,7 +52,10 @@ target_link_libraries(led_control_webserver
         hardware_gpio
         hardware_adc
         pico_cyw43_arch_lwip_threadsafe_background
+        FreeRTOS-Kernel 
+        FreeRTOS-Kernel-Heap4
         hardware_i2c
+        hardware_pwm
 )
 
 # Add the standard include files to the build
