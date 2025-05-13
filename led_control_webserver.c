@@ -396,5 +396,7 @@ int main() {
     printf("Iniciando scheduler do FreeRTOS...\n");
     vTaskStartScheduler();
 
+    panic_unsupported();
+
     return 0;
 }
