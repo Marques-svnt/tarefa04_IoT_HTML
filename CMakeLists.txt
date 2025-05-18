@@ -1,3 +1,17 @@
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.1.1)
+set(toolchainVersion 14_2_Rel1)
+set(picotoolVersion 2.1.1)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
 # Generated Cmake Pico project file
 
 cmake_minimum_required(VERSION 3.13)
@@ -23,13 +37,13 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(led_control_webserver led_control_webserver.c )
+add_executable(led_control_webserver led_control_webserver.c libs/ds18b20/ds18b20.c)
 
 pico_set_program_name(led_control_webserver "led_control_webserver")
 pico_set_program_version(led_control_webserver "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(led_control_webserver 0)
+pico_enable_stdio_uart(led_control_webserver 1)
 pico_enable_stdio_usb(led_control_webserver 1)
 
 # Add the standard library to the build
@@ -50,6 +64,7 @@ target_include_directories(led_control_webserver PRIVATE
     ${PICO_SDK_PATH}/lib/lwip/src/include
     ${PICO_SDK_PATH}/lib/lwip/src/include/arch
     ${PICO_SDK_PATH}/lib/lwip/src/include/lwip
+    lib/ds18b20/ds18b20.h
 )
 
 target_sources(led_control_webserver PRIVATE
@@ -61,3 +76,4 @@ target_sources(led_control_webserver PRIVATE
 # Add any user requested libraries
 
 pico_add_extra_outputs(led_control_webserver)
+include_directories(${CMAKE_SOURCE_DIR}/libs)
