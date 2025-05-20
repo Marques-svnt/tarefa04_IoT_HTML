@@ -17,8 +17,6 @@
 #include "task.h"
 #include "semphr.h" // Para semáforos
 
-#include "libs/ds18b20/ds18b20.h"
-
 // Credenciais WIFI - Tome cuidado se publicar no github!
 #define WIFI_SSID ""
 #define WIFI_PASSWORD ""
@@ -29,7 +27,6 @@
 #define LED_RED_PIN 13                        // GPIO13 - LED vermelho (usado para laranja e vermelho com PWM)
 #define BUTTON_A_PIN 5                        // GPIO5 - Botão A para simulação
 #define ADC_HEART_PIN 26
-bool simulation = 1; // 1 - sensor; 0 - botões
 
 // Constantes para simulação e alertas
 #define TEMPERATURA_NORMAL 25.0f
@@ -40,8 +37,6 @@ bool simulation = 1; // 1 - sensor; 0 - botões
 #define BPM_ALTO 120.0f
 #define BPM_SIRS 90.0f
 
-#define DS18B20_PIN 20
-
 #define PWM_WRAP_VALUE 255 // Para controle PWM de 8 bits
 
 // Variáveis globais para dados dos sensores (simulados) e estado
@@ -49,14 +44,11 @@ volatile float temp_sim = TEMPERATURA_NORMAL;
 volatile float bpm_sim = BPM_NORMAL;
 volatile int estado_temp = 0; // 0: normal, 1: alta
 
-volatile float temp_sens;
-
 // Handle para o Mutex
 SemaphoreHandle_t sensor_data_mutex;
 
 // Handles das Tasks
 TaskHandle_t heart_sensor_task_handle;
-TaskHandle_t temperature_sensor_task_handle;
 TaskHandle_t button_task_handle;
 TaskHandle_t led_alert_task_handle;
 TaskHandle_t network_poll_task_handle;
@@ -72,7 +64,6 @@ void launch_web_server(void);
 
 // Tasks do FreeRTOS
 void heart_sensor_task(void *pvParameters);
-void temperature_sensor_task(void *pvParameters);
 void button_task(void *pvParameters);
 void led_alert_task(void *pvParameters);
 void network_poll_task(void *pvParameters);
@@ -105,7 +96,7 @@ void init_gpios_pwm(void)
 
 // --- Tasks do FreeRTOS ---
 
-// Tarefa para simular leitura do sensor cardíaco (placeholder)
+// Tarefa para simular leitura do sensor cardíaco 
 void heart_sensor_task(void *pvParameters)
 {
     (void)pvParameters;
@@ -126,25 +117,7 @@ void heart_sensor_task(void *pvParameters)
     }
 }
 
-// Tarefa para simular leitura do sensor de temperatura (placeholder)
-void temperature_sensor_task(void *pvParameters)
-{
-    (void)pvParameters;
-    if (simulation == 1)
-    {
-        ds18b20_init(DS18B20_PIN);
-        while (true)
-        {
-            temp_sens = ds18b20_get_temperature();
-            printf("%.f", temp_sens);
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
-        }
-    }
-    else
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
-}
-
-// Tarefa para monitorar o botão e alterar os valores simulados
+// Tarefa para simular a temperatura pelo botão
 void button_task(void *pvParameters)
 {
     (void)pvParameters;
@@ -376,8 +349,6 @@ int main()
 
     // Cria as tasks do FreeRTOS
     xTaskCreate(heart_sensor_task, "HeartSensorTask", configMINIMAL_STACK_SIZE * 2, NULL, tskIDLE_PRIORITY + 1, &heart_sensor_task_handle);
-
-    xTaskCreate(temperature_sensor_task, "TempSensorTask", configMINIMAL_STACK_SIZE * 2, NULL, tskIDLE_PRIORITY + 1, &temperature_sensor_task_handle);
 
     xTaskCreate(button_task, "ButtonTask", configMINIMAL_STACK_SIZE * 2, NULL, tskIDLE_PRIORITY + 2, &button_task_handle);
 
