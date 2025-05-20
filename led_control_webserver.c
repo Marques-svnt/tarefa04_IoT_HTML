@@ -321,7 +321,7 @@ int main()
     // Conecta ao Wi-Fi
     printf("Conectando ao Wi-Fi: %s...\n", WIFI_SSID);
     int retries = 0;
-    while (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000))
+    while (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 120000))
     {
         printf("Falha ao conectar ao Wi-Fi. Tentativa %d\n", ++retries);
         if (retries > 5)
