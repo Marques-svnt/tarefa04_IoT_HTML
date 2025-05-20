@@ -28,6 +28,8 @@
 #define LED_GREEN_PIN 11                      // GPIO11 - LED verde (usado para laranja com PWM)
 #define LED_RED_PIN 13                        // GPIO13 - LED vermelho (usado para laranja e vermelho com PWM)
 #define BUTTON_A_PIN 5                        // GPIO5 - Botão A para simulação
+#define ADC_HEART_PIN 26
+bool simulation = 1; // 1 - sensor; 0 - botões
 
 // Constantes para simulação e alertas
 #define TEMPERATURA_NORMAL 25.0f
@@ -45,7 +47,7 @@
 // Variáveis globais para dados dos sensores (simulados) e estado
 volatile float temp_sim = TEMPERATURA_NORMAL;
 volatile float bpm_sim = BPM_NORMAL;
-volatile int estado = 0; // 0: Normal, 1: HR Alto, 2: Temp Alta, 3: Ambos Altos
+volatile int estado_temp = 0; // 0: normal, 1: alta
 
 volatile float temp_sens;
 
@@ -96,6 +98,9 @@ void init_gpios_pwm(void)
         pwm_init(slice_num, &config, true);           // Inicia o PWM, true para habilitar
         pwm_set_gpio_level(gpio, 0);                  // Começa com LED desligado
     }
+    // ADC for heart sensor
+    adc_init();
+    adc_gpio_init(ADC_HEART_PIN);
 }
 
 // --- Tasks do FreeRTOS ---
@@ -103,12 +108,21 @@ void init_gpios_pwm(void)
 // Tarefa para simular leitura do sensor cardíaco (placeholder)
 void heart_sensor_task(void *pvParameters)
 {
-    (void)pvParameters; // Evitar aviso de não utilizado
-
-    while (true)
+    (void)pvParameters;
+    while (1)
     {
-        // Lógica futura do sensor cardíaco aqui
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
+        uint16_t raw = adc_read();
+        float voltage = raw * (3.3f / (1 << 12));
+        // Map voltage [0.5V..2.5V] to BPM [50..150]
+        float bpm = ((voltage - 0.5f) * (100.0f / 2.0f)) + 50.0f;
+        if (bpm < 0)
+            bpm = 0;
+        if (xSemaphoreTake(sensor_data_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            bpm_sim = bpm;
+            xSemaphoreGive(sensor_data_mutex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
@@ -116,67 +130,54 @@ void heart_sensor_task(void *pvParameters)
 void temperature_sensor_task(void *pvParameters)
 {
     (void)pvParameters;
-    ds18b20_init(DS18B20_PIN);
-    while (true)
+    if (simulation == 1)
     {
-        temp_sens = ds18b20_get_temperature();
-        printf("%.f", temp_sens);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
+        ds18b20_init(DS18B20_PIN);
+        while (true)
+        {
+            temp_sens = ds18b20_get_temperature();
+            printf("%.f", temp_sens);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
+        }
     }
+    else
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Executa a cada 1 segundo
 }
 
 // Tarefa para monitorar o botão e alterar os valores simulados
 void button_task(void *pvParameters)
 {
     (void)pvParameters;
-    bool last_button_state = true; // Assume que o botão está solto (pull-up)
-    TickType_t last_press_time = 0;
-
-    while (true)
+    bool last = true;
+    TickType_t last_time = 0;
+    while (1)
     {
-        bool current_button_state = gpio_get(BUTTON_A_PIN);
-        if (current_button_state == false && last_button_state == true)
-        { // Botão pressionado (borda de descida)
-            if (xTaskGetTickCount() - last_press_time > pdMS_TO_TICKS(250))
-            { // Debounce simples
-                last_press_time = xTaskGetTickCount();
-
+        bool curr = gpio_get(BUTTON_A_PIN);
+        if (!curr && last)
+        {
+            if (xTaskGetTickCount() - last_time > pdMS_TO_TICKS(200))
+            {
+                last_time = xTaskGetTickCount();
                 if (xSemaphoreTake(sensor_data_mutex, portMAX_DELAY) == pdTRUE)
                 {
-                    estado = (estado + 1) % 4; // Cicla entre 0, 1, 2, 3
-
-                    switch (estado)
+                    estado_temp = (estado_temp + 1) % 2;
+                    switch (estado_temp)
                     {
-                    case 0: // Normal
+                    case 0:
                         temp_sim = TEMPERATURA_NORMAL;
-                        bpm_sim = BPM_NORMAL;
-                        printf("Simulação: Normal\n");
                         break;
-                    case 1: // Cardíaco Alto
-                        temp_sim = TEMPERATURA_NORMAL;
-                        bpm_sim = BPM_ALTO;
-                        printf("Simulação: Cardíaco Alto\n");
-                        break;
-                    case 2: // Temperatura Alta
+                    case 1:
                         temp_sim = TEMPERATURA_ALTA;
-                        bpm_sim = BPM_NORMAL;
-                        printf("Simulação: Temperatura Alta\n");
-                        break;
-                    case 3: // Ambos Altos
-                        temp_sim = TEMPERATURA_ALTA;
-                        bpm_sim = BPM_ALTO;
-                        printf("Simulação: Ambos Altos (Crítico)\n");
                         break;
                     }
                     xSemaphoreGive(sensor_data_mutex);
                 }
             }
         }
-        last_button_state = current_button_state;
-        vTaskDelay(pdMS_TO_TICKS(50)); // Verifica o botão a cada 50ms
+        last = curr;
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
 // Tarefa para controlar LEDs com base nos alertas
 void led_alert_task(void *pvParameters)
 {
@@ -245,131 +246,56 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
 
 static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
-    LWIP_UNUSED_ARG(arg);
-
-    if (err != ERR_OK && err != ERR_ABRT)
-    { // ERR_ABRT pode acontecer se o cliente abortar
-        printf("Erro na recepção TCP: %d\n", err);
-        if (p)
-            pbuf_free(p); // Libera o pbuf se houver erro e pbuf existir
-        // Não fechar o tpcb aqui necessariamente, LwIP pode cuidar disso ou tentar recuperar
-        return err;
-    }
-
     if (!p)
-    { // Conexão fechada pelo cliente
-        printf("Conexão TCP fechada pelo cliente.\n");
+    {
         tcp_close(tpcb);
-        tcp_recv(tpcb, NULL); // Remove o callback de recepção
         return ERR_OK;
     }
-
-    // Checa se é uma requisição GET (simplificado)
     if (p->len >= 3 && strncmp((char *)p->payload, "GET", 3) == 0)
     {
-        char html_buffer[1024]; // Buffer para a resposta HTML
-        float temp_atual, bpm_atual;
-        int estado_atual;
-        char status_text[50];
+        char html[768];  // Aumentado para comportar o CSS
+        float t, h;
+        int est;
+        xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(100));
+        t = temp_sim;
+        h = bpm_sim;
+        est = estado_temp;
+        xSemaphoreGive(sensor_data_mutex);
 
-        // Pega os dados dos sensores de forma segura
-        if (xSemaphoreTake(sensor_data_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
-        {
-            temp_atual = temp_sim;
-            bpm_atual = bpm_sim;
-            estado_atual = estado; // Usar a cópia local do estado
-            xSemaphoreGive(sensor_data_mutex);
-        }
+        const char *status = "Normal";
+        if (t > TEMPERATURA_SIRS && h > BPM_SIRS)
+            status = "Critico";
+        else if (t > TEMPERATURA_SIRS)
+            status = "Temp Alta";
+        else if (h > BPM_SIRS)
+            status = "HR Alta";
 
-        // Define o texto de status com base no estado da simulação
-        bool temp_alerta = (temp_atual > TEMPERATURA_SIRS);
-        bool bpm_alerta = (bpm_atual > BPM_SIRS);
+        int len = snprintf(html, sizeof(html),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Connection: close\r\n\r\n"
+            "<html><head><title>Status</title>"
+            "<style>"
+            "body { background-color: #121212; color: #FFFFFF; font-family: Arial, sans-serif; text-align: center; padding: 40px; }"
+            "h2 { margin: 15px 0; }"
+            "</style>"
+            "</head><body>"
+            "<h2>Temp: %.1f &#8451;</h2>"
+            "<h2>HR: %.0f bpm</h2>"
+            "<h2>Status: %s</h2>"
+            "<script>"
+            "setInterval(function() { location.href='/'; }, 5000);"
+            "</script>"
+            "</body></html>",
+            t, h, status);
 
-        if (temp_alerta && bpm_alerta)
-        {
-            strcpy(status_text, "CRiTICO!");
-        }
-        else if (bpm_alerta)
-        {
-            strcpy(status_text, "Alerta Cardiaco");
-        }
-        else if (temp_alerta)
-        {
-            strcpy(status_text, "Alerta Temperatura");
-        }
-        else if (estado_atual != -1)
-        {
-            strcpy(status_text, "Normal");
-        }
-
-        // Monta a resposta HTML
-        // Estilo CSS inline e compacto para economizar espaço
-        // Cores: Fundo escuro (#282c34), Texto claro (#abb2bf), Título (#61afef), Alertas (laranja, vermelho)
-        snprintf(html_buffer, sizeof(html_buffer),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: text/html\r\n"
-                 "Connection: close\r\n\r\n" // Adicionar Connection: close
-                 "<!DOCTYPE html>"
-                 "<html><head><title>SIRS Monitor</title>"
-                 "<meta http-equiv='refresh' content='5'>" // Auto-refresh a cada 5 segundos
-                 "<style>"
-                 "body{font-family:Arial,sans-serif;background-color:#282c34;color:#abb2bf;text-align:center;margin:0;padding:20px;}"
-                 "h1{color:#61afef;font-size:2em;margin-bottom:10px;}"
-                 ".container{background-color:#353a40;padding:15px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.2);display:inline-block;}"
-                 "p{font-size:1.2em;margin:8px 0;}"
-                 ".status{font-weight:bold;}"
-                 ".normal{color:#98c379;}"   /* Verde */
-                 ".warning{color:#e5c07b;}"  /* Amarelo/Laranja */
-                 ".critical{color:#e06c75;}" /* Vermelho */
-                 "</style></head>"
-                 "<body><div class='container'>"
-                 "<h1>Monitoramento SIRS</h1>"
-                 "<p>Temperatura: %.1f &deg;C</p>"
-                 "<p>Batimentos: %.0f bpm</p>",
-                 temp_atual, bpm_atual);
-
-        // Adiciona o status dinamicamente para permitir classes de cor
-        char status_html[100];
-        if (temp_alerta && bpm_alerta)
-        {
-            snprintf(status_html, sizeof(status_html), "<p class='status critical'>Status: %s</p>", status_text);
-        }
-        else if (temp_alerta || bpm_alerta)
-        {
-            snprintf(status_html, sizeof(status_html), "<p class='status warning'>Status: %s</p>", status_text);
-        }
-        else if (estado_atual != -1)
-        {
-            snprintf(status_html, sizeof(status_html), "<p class='status normal'>Status: %s</p>", status_text);
-        }
-        else
-        {
-            snprintf(status_html, sizeof(status_html), "<p class='status critical'>Status: %s</p>", status_text);
-        }
-        strncat(html_buffer, status_html, sizeof(html_buffer) - strlen(html_buffer) - 1);
-        strncat(html_buffer, "</div></body></html>", sizeof(html_buffer) - strlen(html_buffer) - 1);
-
-        printf("HTML enviado:\n%s\n", html_buffer); // Depuração do tamanho do buffer
-
-        // Envia a resposta
-        err_t write_err = tcp_write(tpcb, html_buffer, strlen(html_buffer), TCP_WRITE_FLAG_COPY);
-        if (write_err != ERR_OK)
-        {
-            printf("Erro ao escrever para TCP: %d\n", write_err);
-            // Se houver erro na escrita, pode ser necessário fechar o pcb
-            tcp_close(tpcb); // Fechar em caso de erro grave de escrita
-            tcp_recv(tpcb, NULL);
-        }
-        else
-        {
-            tcp_output(tpcb); // Força o envio dos dados
-        }
+        tcp_write(tpcb, html, len, TCP_WRITE_FLAG_COPY);
+        tcp_output(tpcb);
     }
-
-    pbuf_free(p); // Libera o buffer da requisição
-
+    pbuf_free(p);
     return ERR_OK;
 }
+
 
 void launch_web_server(void)
 {
