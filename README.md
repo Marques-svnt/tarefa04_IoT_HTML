@@ -1,14 +1,13 @@
-# Sistema de Monitoramento de Sinais Vitais com Acesso Web e FreeRTOS
+# Sistema de Monitoramento de Sinais Vitais com Acesso Web e FreeRTOS - Parte final
 
 Este projeto implementa um **sistema embarcado inteligente** utilizando o microcontrolador **RP2040** da placa BitDogLab, o sistema operacional **FreeRTOS** e conectividade Wi-Fi para **monitoramento de sinais vitais** e exibição remota via navegador.
 
 ## Periféricos Utilizados
 
-* **Sensor MAX30102** – frequência cardíaca (**não integrado ainda**)
-* **Sensor DS18B20** – temperatura corporal (**não integrado ainda**)
 * **LED** de status (GPIO)
 * **Botão físico** (GPIO com interrupção e debounce)
 * **Conexão Wi-Fi** (módulo CYW43 da BitDogLab)
+* * **Potênciometro** (ADC)
 
 ## Funcionalidades
 
@@ -16,7 +15,6 @@ Este projeto implementa um **sistema embarcado inteligente** utilizando o microc
 * Criação de **servidor web embutido**, acessível por IP local.
 * Interface via navegador com leitura simulada dos sinais.
 * **Botão físico** com debounce para interações futuras.
-* Arquitetura pronta para integração com sensores reais.
 
 ## Modos de Operação
 
@@ -33,9 +31,8 @@ Este projeto implementa um **sistema embarcado inteligente** utilizando o microc
 ## Hardware Utilizado
 
 * **RP2040** (BitDogLab)
-* Sensor **MAX30102** (*a integrar*)
-* Sensor **DS18B20** (*a integrar*)
 * LED de status
+* Potênciometro
 * Botão físico
 
 ## Software e Ferramentas
@@ -76,7 +73,7 @@ Este projeto implementa um **sistema embarcado inteligente** utilizando o microc
 
 ## Vídeo de Demonstração
 
-* [\[Link para o vídeo no YouTube\]](https://www.youtube.com/watch?v=YVdxUgJbh8k)
+* [\[Link para o vídeo no YouTube\]](https://www.youtube.com/watch?v=d-pSu74gjJg)
 
 ## Licença
 
